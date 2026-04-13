@@ -1,2 +1,13 @@
+# Environments
+venv/
+__pycache__/
+
+# API Keys and Secrets
 .env
-.venv/
+
+# Google Auth Tokens
+credentials.json
+token.json
+
+# Local State/Ledgers
+processed_tickets.json
