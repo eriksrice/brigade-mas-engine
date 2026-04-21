@@ -1,0 +1,68 @@
+name: The Aboyeur - Automated Build Log
+
+# Trigger this action whenever a Pull Request to 'main' is opened or updated
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize]
+
+jobs:
+  generate-build-log:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write # Required to post the comment back to the PR
+      contents: read
+
+    steps:
+      # 1. Checkout the code
+      # fetch-depth: 0 is CRITICAL. Without it, Git only pulls the latest commit,
+      # and we can't calculate the diff between the PR and the main branch.
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      # 2. Stand up the Python Environment
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      # 3. Install Dependencies
+      - name: Install Requirements
+        run: pip install -r requirements.txt
+
+      # 4. Extract the Raw Git Log
+      # We capture every commit made in this PR that isn't in main
+      - name: Extract Commit Diff
+        id: git_diff
+        run: |
+          RAW_LOGS=$(git log origin/${{ github.base_ref }}..HEAD --oneline)
+          
+          # GitHub Actions requires this EOF syntax to pass multiline strings between steps safely
+          echo "COMMIT_LOGS<<EOF" >> $GITHUB_ENV
+          echo "$RAW_LOGS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      # 5. Execute The Aboyeur Node
+      - name: Generate Build Log
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # Pass the raw logs into your local CLI
+          OUTPUT=$(python brigade.py aboyeur "${{ env.COMMIT_LOGS }}")
+          
+          # Save the LLM's output to the environment
+          echo "ABOYEUR_OUTPUT<<EOF" >> $GITHUB_ENV
+          echo "$OUTPUT" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      # 6. Post the Final Log to the Pull Request
+      - name: Comment on PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Automatically provided by GitHub
+        run: |
+          # Use the GitHub CLI to post the output directly to the conversation
+          gh pr comment ${{ github.event.pull_request.number }} --body "${{ env.ABOYEUR_OUTPUT }}"
