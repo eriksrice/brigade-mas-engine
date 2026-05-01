@@ -11,3 +11,4 @@ token.json
 
 # Local State/Ledgers
 processed_tickets.json
+daily_watering_holes.json
